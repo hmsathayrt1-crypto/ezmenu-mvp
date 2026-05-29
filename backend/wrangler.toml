@@ -1,11 +1,12 @@
 name = "ezmenu-backend"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
 
 [[d1_databases]]
 binding = "DB"
 database_name = "ezmenu-db"
-database_id = "REPLACE_AFTER_CREATE"
+database_id = "f65cd56f-bc04-4d9a-9861-79560f8fd71d"
 
 [vars]
 ENVIRONMENT = "production"

@@ -1,24 +1,60 @@
-import { useState, useMemo } from 'react';
-import type { MenuItem, Addon } from './types';
-import { categories, menuItems, RESTAURANT } from './data/menu';
+import { useState, useEffect, useMemo } from 'react';
+import type { MenuItem as MenuItemType, Addon } from './types';
+import { menuItems as staticItems, categories as staticCats, RESTAURANT as staticRest } from './data/menu';
 import { useCartStore } from './stores/cartStore';
 import { AuthProvider } from './admin/AuthContext';
 import AdminApp from './admin/AdminApp';
 
-// Customer Menu App
+const API = import.meta.env.VITE_API_BASE || '';
+
+interface ApiCategory { id: string; name: string; icon: string; sort_order: number; }
+interface ApiAddon { id: string; name: string; price_syp: number; price_usd: number; }
+interface ApiItem { id: string; category_id: string; name: string; name_en: string; description: string; price_syp: number; price_usd: number; image_url: string; is_featured: number; is_available: number; addons: ApiAddon[]; }
+interface ApiRestaurant { id: string; name: string; slug: string; whatsapp_number: string; description: string; }
+
 function CustomerApp() {
   const [activeCategory, setActiveCategory] = useState('all');
-  const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
+  const [detailItem, setDetailItem] = useState<MenuItemType | null>(null);
   const [showCart, setShowCart] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
   const [selectedAddons, setSelectedAddons] = useState<Addon[]>([]);
   const { items, addItem, removeItem, updateQuantity, getTotalSYP, getTotalItems, getWhatsAppMessage } = useCartStore();
 
+  // API data
+  const [restaurant, setRestaurant] = useState(staticRest);
+  const [cats, setCats] = useState(staticCats);
+  const [menuData, setMenuData] = useState(staticItems);
+  const [apiLoaded, setApiLoaded] = useState(false);
+
+  // Extract slug from URL path: /al-thawq → al-thawq, / → static
+  const slug = window.location.pathname.split('/').filter(Boolean)[0] || '';
+
+  useEffect(() => {
+    if (!slug) { setApiLoaded(true); return; }
+    fetch(`${API}/api/menu/${slug}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.restaurant) {
+          setRestaurant({ name: data.restaurant.name, whatsapp: data.restaurant.whatsapp_number });
+          setCats(data.categories.map((c: ApiCategory) => ({ id: c.id, name: c.name, icon: c.icon })));
+          setMenuData(data.items.map((i: ApiItem) => ({
+            id: i.id, categoryId: i.category_id, name: i.name, nameEn: i.name_en,
+            description: i.description, priceSYP: i.price_syp, priceUSD: i.price_usd,
+            image: i.image_url || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400',
+            isFeatured: !!i.is_featured, isAvailable: !!i.is_available,
+            addons: (i.addons || []).map((a: ApiAddon) => ({ id: a.id, name: a.name, priceSYP: a.price_syp, priceUSD: a.price_usd })),
+          })));
+        }
+        setApiLoaded(true);
+      })
+      .catch(() => setApiLoaded(true));
+  }, [slug]);
+
   const filtered = useMemo(() => {
-    if (activeCategory === 'all') return menuItems;
-    return menuItems.filter((i) => i.categoryId === activeCategory);
-  }, [activeCategory]);
+    if (activeCategory === 'all') return menuData;
+    return menuData.filter((i) => i.categoryId === activeCategory);
+  }, [activeCategory, menuData]);
 
   const handleAdd = () => {
     if (!detailItem) return;
@@ -27,17 +63,19 @@ function CustomerApp() {
   };
 
   const openWhatsApp = () => {
-    const msg = getWhatsAppMessage(RESTAURANT.name);
-    window.open(`https://wa.me/${RESTAURANT.whatsapp}?text=${encodeURIComponent(msg)}`, '_blank');
+    const msg = getWhatsAppMessage(restaurant.name);
+    window.open(`https://wa.me/${restaurant.whatsapp}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   const totalSYP = getTotalSYP();
+
+  if (!apiLoaded) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><div className="animate-spin w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full" /></div>;
 
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-sm">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div><h1 className="text-xl font-bold text-gray-900">{RESTAURANT.name}</h1><p className="text-xs text-emerald-600 flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500 rounded-full inline-block" />مفتوح الآن</p></div>
+          <div><h1 className="text-xl font-bold text-gray-900">{restaurant.name}</h1><p className="text-xs text-emerald-600 flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500 rounded-full inline-block" />مفتوح الآن</p></div>
           <button onClick={() => setShowCart(true)} className="relative bg-emerald-500 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-emerald-600 transition-colors">
             🛒 السلة
             {getTotalItems() > 0 && <span className="absolute -top-2 -left-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{getTotalItems()}</span>}
@@ -45,7 +83,7 @@ function CustomerApp() {
         </div>
         <div className="max-w-2xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto">
           <button onClick={() => setActiveCategory('all')} className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${activeCategory === 'all' ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>الكل</button>
-          {categories.map((cat) => (
+          {cats.map((cat) => (
             <button key={cat.id} onClick={() => setActiveCategory(cat.id)} className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${activeCategory === cat.id ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{cat.icon} {cat.name}</button>
           ))}
         </div>
@@ -165,17 +203,8 @@ function CustomerApp() {
   );
 }
 
-// Root App — routes /admin to Admin, everything else to Customer
 export default function App() {
   const isAdmin = window.location.pathname.startsWith('/admin');
-
-  if (isAdmin) {
-    return (
-      <AuthProvider apiBase={import.meta.env.VITE_API_BASE || '/api'}>
-        <AdminApp />
-      </AuthProvider>
-    );
-  }
-
+  if (isAdmin) return <AuthProvider apiBase={`${API}/api`}><AdminApp /></AuthProvider>;
   return <CustomerApp />;
 }
